@@ -108,7 +108,11 @@ func (l Ledger) Save(path string) error {
 	}
 	data = append(data, '\n')
 
-	temporaryPath := TemporaryPath(path)
+	resolvedPath, err := resolveSymlinkTarget(path)
+	if err != nil {
+		return fmt.Errorf("save ledger %q: %w", path, err)
+	}
+	temporaryPath := TemporaryPath(resolvedPath)
 	temporary, err := os.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("create ledger temporary file %q: %w", temporaryPath, err)
@@ -139,10 +143,65 @@ func (l Ledger) Save(path string) error {
 	if err := closeTemporary(); err != nil {
 		return failed(fmt.Errorf("close ledger temporary file %q: %w", temporaryPath, err))
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	if err := os.Rename(temporaryPath, resolvedPath); err != nil {
 		return failed(fmt.Errorf("replace ledger %q: %w", path, err))
 	}
 	return nil
+}
+
+// resolveSymlinkTarget follows symbolic links in path so that callers can
+// replace the resolved target file instead of the link itself. When path is a
+// symlink, the returned path names the file the link points at; the symlink is
+// left in place so that both paths keep viewing the same ledger. When the final
+// component does not exist yet (for example a first save or a still-broken
+// symlink), the parent directory is resolved and the base name is appended; if
+// that final component is itself a symlink, its target is followed even when
+// the target does not yet exist, so the save creates the real target file.
+func resolveSymlinkTarget(path string) (string, error) {
+	return resolveSymlinkTargetDepth(path, 0)
+}
+
+const maxSymlinkDepth = 40
+
+func resolveSymlinkTargetDepth(path string, depth int) (string, error) {
+	if depth > maxSymlinkDepth {
+		return "", fmt.Errorf("resolve ledger path %q: too many symlink levels", path)
+	}
+	cleaned := filepath.Clean(path)
+	if cleaned == "" {
+		return "", os.ErrNotExist
+	}
+	dir, base := filepath.Split(cleaned)
+	if dir == "" {
+		dir = "."
+	}
+	resolvedDir, err := filepath.EvalSymlinks(filepath.Clean(dir))
+	if err != nil {
+		return "", err
+	}
+	full := filepath.Join(resolvedDir, base)
+	info, err := os.Lstat(full)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// The final component does not exist, so it cannot be a symlink;
+			// write the file at this real location.
+			return full, nil
+		}
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		// Not a symlink: return the canonical path for an existing file or
+		// directory (the rename will fail for a directory, as expected).
+		return filepath.EvalSymlinks(full)
+	}
+	target, err := os.Readlink(full)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(resolvedDir, target)
+	}
+	return resolveSymlinkTargetDepth(target, depth+1)
 }
 
 func TemporaryPath(path string) string {
