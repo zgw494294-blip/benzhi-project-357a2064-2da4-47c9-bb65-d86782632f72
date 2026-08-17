@@ -35,9 +35,6 @@ func Load(path string) (Ledger, error) {
 	if err != nil {
 		return Ledger{}, fmt.Errorf("load ledger %q: %w", path, err)
 	}
-	if len(bytes.TrimSpace(data)) == 0 {
-		return New(), nil
-	}
 
 	var result Ledger
 	decoder := json.NewDecoder(bytes.NewReader(data))
