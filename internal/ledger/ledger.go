@@ -108,11 +108,11 @@ func (l Ledger) Save(path string) error {
 	}
 	data = append(data, '\n')
 
-	temporaryPath := TemporaryPath(path)
-	temporary, err := os.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	temporary, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-")
 	if err != nil {
-		return fmt.Errorf("create ledger temporary file %q: %w", temporaryPath, err)
+		return fmt.Errorf("create ledger temporary file for %q: %w", path, err)
 	}
+	temporaryPath := temporary.Name()
 	closed := false
 	closeTemporary := func() error {
 		if closed {
