@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"meshturn/internal/batch"
@@ -89,6 +90,7 @@ func (l *Ledger) Add(newBatch batch.Batch) error {
 func (l *Ledger) Find(id string) (*batch.Batch, bool) {
 	for i := range l.Batches {
 		if l.Batches[i].ID == id {
+			l.Batches = slices.Grow(l.Batches, 1)
 			return &l.Batches[i], true
 		}
 	}
