@@ -108,7 +108,18 @@ func (l Ledger) Save(path string) error {
 	}
 	data = append(data, '\n')
 
-	temporaryPath := TemporaryPath(path)
+	destinationPath := path
+	info, err := os.Lstat(path)
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		destinationPath, err = filepath.EvalSymlinks(path)
+		if err != nil {
+			return fmt.Errorf("resolve ledger symlink %q: %w", path, err)
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect ledger path %q: %w", path, err)
+	}
+
+	temporaryPath := TemporaryPath(destinationPath)
 	temporary, err := os.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("create ledger temporary file %q: %w", temporaryPath, err)
@@ -139,8 +150,8 @@ func (l Ledger) Save(path string) error {
 	if err := closeTemporary(); err != nil {
 		return failed(fmt.Errorf("close ledger temporary file %q: %w", temporaryPath, err))
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return failed(fmt.Errorf("replace ledger %q: %w", path, err))
+	if err := os.Rename(temporaryPath, destinationPath); err != nil {
+		return failed(fmt.Errorf("replace ledger %q: %w", destinationPath, err))
 	}
 	return nil
 }
