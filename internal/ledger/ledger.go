@@ -62,6 +62,9 @@ func (l Ledger) Validate() error {
 	if l.Version != CurrentVersion {
 		return fmt.Errorf("unsupported ledger version %d", l.Version)
 	}
+	if l.Batches == nil {
+		return fmt.Errorf("batches field is required")
+	}
 	seen := make(map[string]struct{}, len(l.Batches))
 	for i, b := range l.Batches {
 		if err := b.Validate(); err != nil {
